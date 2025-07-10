@@ -1,6 +1,6 @@
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  scrape_interval: 5s
+  evaluation_interval: 5s
   external_labels:
     cluster: us1
     replica: 1
@@ -8,7 +8,7 @@ global:
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['172.17.0.1:9091', '172.17.0.1:9092']
-  # - job_name: 'sidecar'
-  #   static_configs:
-  #     - targets: ['172.17.0.1:19091','172.17.0.1:19092']
+      - targets: ['localhost:9091', 'localhost:9092']
+  - job_name: 'sidecar'
+    static_configs:
+      - targets: ['thanos_sidecar0_us1:19091', 'thanos_sidecar1_us1:19092']
