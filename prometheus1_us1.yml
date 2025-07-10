@@ -8,7 +8,7 @@ global:
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9091', 'localhost:9092']
+      - targets: ['prometheus0_us1:9090', 'prometheus1_us1:9090']
   - job_name: 'sidecar'
     static_configs:
-      - targets: ['thanos_sidecar0_us1:19091', 'thanos_sidecar1_us1:19092']
+      - targets: ['thanos_sidecar0_us1:19090', 'thanos_sidecar1_us1:19090']

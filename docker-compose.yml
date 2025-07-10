@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # --------------------------------------- [prometheus0_eu1]
   prometheus0_eu1:
     container_name: prometheus0_eu1
     # restart: unless-stopped
@@ -11,7 +12,7 @@ services:
     # network_mode: host # Use host network stack
     volumes:
       # - ./prometheus0_eu1_data:/etc/prometheus
-      - prometheus-storage:/prometheus
+      - prometheus0-eu1-storage:/prometheus
       - ./prometheus0_eu1.yml:/etc/prometheus/prometheus.yml:ro
       - ./node_exporter.crt:/etc/node_exporter/node_exporter.crt:ro
     command:
@@ -46,96 +47,98 @@ services:
       - 19090:19090
       - 19190:19190
 
-  #---------------------------------------------
+  # --------------------------------------- [prometheus0_us1]
+  prometheus0_us1:
+    container_name: prometheus0_us1
+    # restart: unless-stopped
+    image: prom/prometheus:v3.4.1
+    user: root
+    networks:
+      - prometheus_network
+    # network_mode: host # Use host network stack
+    volumes:
+      # - ./prometheus0_us1_data:/etc/prometheus
+      - prometheus0_us1-storage:/prometheus
+      - ./prometheus0_us1.yml:/etc/prometheus/prometheus.yml:ro
+      # - ./node_exporter.crt:/etc/node_exporter/node_exporter.crt:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.listen-address=:9090'
+      # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    ports:
+      - 9091:9090
 
-  # prometheus0_us1:
-  #   container_name: prometheus0_us1
-  #   restart: unless-stopped
-  #   image: prom/prometheus:v3.4.1
-  #   user: root
-  #   networks:
-  #     - prometheus_network
-  #   # network_mode: host # Use host network stack
-  #   volumes:
-  #     # - ./prometheus0_us1_data:/etc/prometheus
-  #     - prometheus0_us1-storage:/prometheus
-  #     - ./prometheus0_us1.yml:/etc/prometheus/prometheus.yml
-  #   command:
-  #     - '--config.file=/etc/prometheus/prometheus.yml'
-  #     - '--storage.tsdb.path=/prometheus'
-  #     - '--web.listen-address=:9091'
-  #     # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
-  #     - '--web.enable-lifecycle'
-  #     - '--web.enable-admin-api'
-  #   ports:
-  #     - 9091:9091
+  thanos_sidecar0_us1:
+    container_name: prometheus-0-sidecar-us1
+    image: quay.io/thanos/thanos:v0.39.1
+    user: root
+    restart: unless-stopped
+    networks:
+      - prometheus_network
+    depends_on:
+      - prometheus0_us1
+    volumes:
+      - ./prometheus0_us1.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - sidecar
+      - --http-address=0.0.0.0:19090
+      - --grpc-address=0.0.0.0:19190
+      - --reloader.config-file=/etc/prometheus/prometheus.yml
+      - --reloader.watch-interval=15s # default 3m
+      - --prometheus.url=http://prometheus0_us1:9090
+    ports:
+      - 19091:19090
+      - 19191:19190
 
-  # thanos_sidecar0_us1:
-  #   container_name: prometheus-0-sidecar-us1
-  #   image: quay.io/thanos/thanos:v0.39.1
-  #   user: root
-  #   restart: unless-stopped
-  #   networks:
-  #     - prometheus_network
-  #   depends_on:
-  #     - prometheus0_us1
-  #   volumes:
-  #     - ./prometheus0_us1.yml:/etc/prometheus/prometheus.yml
-  #   command:
-  #     - sidecar
-  #     - --http-address=0.0.0.0:19091
-  #     - --grpc-address=0.0.0.0:19191
-  #     - --reloader.config-file=/etc/prometheus/prometheus.yml
-  #     - --prometheus.url=http://prometheus0_us1:9091
-  #   ports:
-  #     - 19091:19091
-  #     - 19191:19191
+  # ---------------------------------------
+  prometheus1_us1:
+    container_name: prometheus1_us1
+    # restart: unless-stopped
+    image: prom/prometheus:v3.4.1
+    user: root
+    networks:
+      - prometheus_network
+    # network_mode: host # Use host network stack
+    volumes:
+      # - ./prometheus1_us1_data:/etc/prometheus
+      - prometheus1_us1-storage:/prometheus
+      - ./prometheus1_us1.yml:/etc/prometheus/prometheus.yml:ro
+      # - ./node_exporter.crt:/etc/node_exporter/node_exporter.crt:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.listen-address=:9090'
+      # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    ports:
+      - 9092:9090
 
-  #---------------------------------------------
+  thanos_sidecar1_us1:
+    container_name: prometheus-1-sidecar-us1
+    image: quay.io/thanos/thanos:v0.39.1
+    user: root
+    restart: unless-stopped
+    networks:
+      - prometheus_network
+    depends_on:
+      - prometheus1_us1
+    volumes:
+      - ./prometheus1_us1.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - sidecar
+      - --http-address=0.0.0.0:19090
+      - --grpc-address=0.0.0.0:19190
+      - --reloader.config-file=/etc/prometheus/prometheus.yml
+      - --reloader.watch-interval=15s # default 3m
+      - --prometheus.url=http://prometheus1_us1:9090
+    ports:
+      - 19092:19090
+      - 19192:19190
 
-  # prometheus1_us1:
-  #   container_name: prometheus1_us1
-  #   restart: unless-stopped
-  #   image: prom/prometheus:v3.4.1
-  #   user: root
-  #   networks:
-  #     - prometheus_network
-  #   # network_mode: host # Use host network stack
-  #   volumes:
-  #     # - ./prometheus1_us1_data:/etc/prometheus
-  #     - prometheus1_us1-storage:/prometheus
-  #     - ./prometheus1_us1.yml:/etc/prometheus/prometheus.yml
-  #   command:
-  #     - '--config.file=/etc/prometheus/prometheus.yml'
-  #     - '--storage.tsdb.path=/prometheus'
-  #     - '--web.listen-address=:9092'
-  #     # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
-  #     - '--web.enable-lifecycle'
-  #     - '--web.enable-admin-api'
-  #   ports:
-  #     - 9092:9092
-
-  # thanos_sidecar1_us1:
-  # container_name: prometheus-1-sidecar-us1
-  # image: quay.io/thanos/thanos:v0.39.1
-  # user: root
-  # restart: unless-stopped
-  # networks:
-  #   - prometheus_network
-  # depends_on:
-  #   - prometheus1_us1
-  # volumes:
-  #   - ./prometheus1_us1.yml:/etc/prometheus/prometheus.yml
-  # command:
-  #   - sidecar
-  #   - --http-address=0.0.0.0:19092
-  #   - --grpc-address=0.0.0.0:19192
-  #   - --reloader.config-file=/etc/prometheus/prometheus.yml
-  #   - --prometheus.url=http://prometheus1_us1:9092
-  # ports:
-  #   - 19092:19092
-  #   - 19192:19192
-  # ----------------------------------------------
   thanos_querier:
     container_name: thanos_query
     image: quay.io/thanos/thanos:v0.39.1
@@ -144,8 +147,8 @@ services:
     restart: unless-stopped
     depends_on:
       - thanos_sidecar_eu1
-      # - thanos_sidecar0_us1
-      # - thanos_sidecar1_us1
+      - thanos_sidecar0_us1
+      - thanos_sidecar1_us1
     ports:
       - 29090:29090
     command:
@@ -153,8 +156,8 @@ services:
       - '--http-address=0.0.0.0:29090'
       - '--query.replica-label=replica'
       - '--endpoint=thanos_sidecar_eu1:19190'
-      # - '--endpoint=thanos_sidecar0_us1:19191'
-      # - '--endpoint=thanos_sidecar1_us1:19192'
+      - '--endpoint=thanos_sidecar0_us1:19190'
+      - '--endpoint=thanos_sidecar1_us1:19190'
 
       # - "--store=dnssrv+thanos_sidecar_eu1:19190"
     # # environment:
@@ -164,9 +167,9 @@ services:
     #   - --store=thanos_sidecar_eu1:19190
 
 volumes:
-  prometheus-storage: {}
-  # prometheus0_us1-storage: {}
-  # prometheus1_us1-storage: {}
+  prometheus0-eu1-storage: {}
+  prometheus0_us1-storage: {}
+  prometheus1_us1-storage: {}
 
 networks:
   prometheus_network:
