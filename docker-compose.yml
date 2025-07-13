@@ -1,6 +1,22 @@
 version: '3.8'
 
 services:
+  # --------------------------------------- [minio OCS]
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    ports:
+      - 9000:9000
+      - 9001:9001
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123
+    command: server /data --console-address ":9001"
+    networks:
+      - minio-network
+    volumes:
+      - minio-storage:/data
+  # ---------------------------------------
   # --------------------------------------- [prometheus0_eu1]
   prometheus0_eu1:
     container_name: prometheus0_eu1
@@ -20,8 +36,11 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.listen-address=:9090'
       # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
-      - '--web.enable-lifecycle'
-      - '--web.enable-admin-api'
+      - --web.enable-lifecycle
+      - --web.enable-admin-api
+      - --storage.tsdb.min-block-duration=2h
+      - --storage.tsdb.max-block-duration=2h
+      - --storage.tsdb.retention.time=1000d
     ports:
       - 9090:9090
 
@@ -36,6 +55,8 @@ services:
       - prometheus0_eu1
     volumes:
       - ./prometheus0_eu1.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/bucket-storage.yml:/etc/thanos/minio-bucket.yml:ro
+      - prometheus0-eu1-storage:/prometheus
     command:
       - sidecar
       - --http-address=0.0.0.0:19090
@@ -43,6 +64,10 @@ services:
       - --reloader.config-file=/etc/prometheus/prometheus.yml
       - --reloader.watch-interval=15s # default 3m
       - --prometheus.url=http://prometheus0_eu1:9090
+      - --objstore.config-file=/etc/thanos/minio-bucket.yml
+      - --tsdb.path=/prometheus
+
+      - --shipper.upload-compacted # Upload compacted blocks to the object store, just for first time
     ports:
       - 19090:19090
       - 19190:19190
@@ -68,6 +93,9 @@ services:
       # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
+      - --storage.tsdb.min-block-duration=2h
+      - --storage.tsdb.max-block-duration=2h
+      - --storage.tsdb.retention.time=1000d
     ports:
       - 9091:9090
 
@@ -82,6 +110,8 @@ services:
       - prometheus0_us1
     volumes:
       - ./prometheus0_us1.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/bucket-storage.yml:/etc/thanos/minio-bucket.yml:ro
+      - prometheus0_us1-storage:/prometheus
     command:
       - sidecar
       - --http-address=0.0.0.0:19090
@@ -89,11 +119,16 @@ services:
       - --reloader.config-file=/etc/prometheus/prometheus.yml
       - --reloader.watch-interval=15s # default 3m
       - --prometheus.url=http://prometheus0_us1:9090
+      - --objstore.config-file=/etc/thanos/minio-bucket.yml
+      - --tsdb.path=/prometheus
+
+      - --shipper.upload-compacted # Upload compacted blocks to the object store, just for first time
+
     ports:
       - 19091:19090
       - 19191:19190
 
-  # ---------------------------------------
+  # --------------------------------------- [prometheus1_us1]
   prometheus1_us1:
     container_name: prometheus1_us1
     # restart: unless-stopped
@@ -114,6 +149,9 @@ services:
       # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
+      - --storage.tsdb.min-block-duration=2h
+      - --storage.tsdb.max-block-duration=2h
+      - --storage.tsdb.retention.time=1000d
     ports:
       - 9092:9090
 
@@ -128,6 +166,8 @@ services:
       - prometheus1_us1
     volumes:
       - ./prometheus1_us1.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/bucket-storage.yml:/etc/thanos/minio-bucket.yml:ro
+      - prometheus1_us1-storage:/prometheus
     command:
       - sidecar
       - --http-address=0.0.0.0:19090
@@ -135,10 +175,15 @@ services:
       - --reloader.config-file=/etc/prometheus/prometheus.yml
       - --reloader.watch-interval=15s # default 3m
       - --prometheus.url=http://prometheus1_us1:9090
+      - --objstore.config-file=/etc/thanos/minio-bucket.yml
+      - --tsdb.path=/prometheus
+
+      - --shipper.upload-compacted # Upload compacted blocks to the object store, just for first time
     ports:
       - 19092:19090
       - 19192:19190
 
+  # --------------------------------------- [thanos_querier]
   thanos_querier:
     container_name: thanos_query
     image: quay.io/thanos/thanos:v0.39.1
@@ -167,9 +212,11 @@ services:
     #   - --store=thanos_sidecar_eu1:19190
 
 volumes:
+  minio-storage: {}
   prometheus0-eu1-storage: {}
   prometheus0_us1-storage: {}
   prometheus1_us1-storage: {}
 
 networks:
   prometheus_network:
+  minio-network:
