@@ -4,6 +4,5 @@ config:
   endpoint: 'minio:9000'
   insecure: true
   signature_version2: true
-  # or use basic cred
   access_key: 'admin'
   secret_key: 'admin123'

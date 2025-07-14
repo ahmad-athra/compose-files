@@ -9,11 +9,14 @@ services:
       - 9000:9000
       - 9001:9001
     environment:
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: admin123
       MINIO_ROOT_USER: admin
       MINIO_ROOT_PASSWORD: admin123
     command: server /data --console-address ":9001"
     networks:
       - minio-network
+      - prometheus_network
     volumes:
       - minio-storage:/data
   # ---------------------------------------
@@ -38,9 +41,9 @@ services:
       # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
       - --web.enable-lifecycle
       - --web.enable-admin-api
-      - --storage.tsdb.min-block-duration=2h
-      - --storage.tsdb.max-block-duration=2h
-      - --storage.tsdb.retention.time=1000d
+      - --storage.tsdb.min-block-duration=15m
+      - --storage.tsdb.max-block-duration=15m
+      - --storage.tsdb.retention.time=12h
     ports:
       - 9090:9090
 
@@ -83,7 +86,7 @@ services:
     # network_mode: host # Use host network stack
     volumes:
       # - ./prometheus0_us1_data:/etc/prometheus
-      - prometheus0_us1-storage:/prometheus
+      - prometheus0-us1-storage:/prometheus
       - ./prometheus0_us1.yml:/etc/prometheus/prometheus.yml:ro
       # - ./node_exporter.crt:/etc/node_exporter/node_exporter.crt:ro
     command:
@@ -93,9 +96,9 @@ services:
       # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
-      - --storage.tsdb.min-block-duration=2h
-      - --storage.tsdb.max-block-duration=2h
-      - --storage.tsdb.retention.time=1000d
+      - --storage.tsdb.min-block-duration=15h
+      - --storage.tsdb.max-block-duration=15h
+      - --storage.tsdb.retention.time=12h
     ports:
       - 9091:9090
 
@@ -111,7 +114,7 @@ services:
     volumes:
       - ./prometheus0_us1.yml:/etc/prometheus/prometheus.yml:ro
       - ./config/bucket-storage.yml:/etc/thanos/minio-bucket.yml:ro
-      - prometheus0_us1-storage:/prometheus
+      - prometheus0-us1-storage:/prometheus
     command:
       - sidecar
       - --http-address=0.0.0.0:19090
@@ -139,7 +142,7 @@ services:
     # network_mode: host # Use host network stack
     volumes:
       # - ./prometheus1_us1_data:/etc/prometheus
-      - prometheus1_us1-storage:/prometheus
+      - prometheus1-us1-storage:/prometheus
       - ./prometheus1_us1.yml:/etc/prometheus/prometheus.yml:ro
       # - ./node_exporter.crt:/etc/node_exporter/node_exporter.crt:ro
     command:
@@ -149,9 +152,9 @@ services:
       # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
-      - --storage.tsdb.min-block-duration=2h
-      - --storage.tsdb.max-block-duration=2h
-      - --storage.tsdb.retention.time=1000d
+      - --storage.tsdb.min-block-duration=15m
+      - --storage.tsdb.max-block-duration=15m
+      - --storage.tsdb.retention.time=12h
     ports:
       - 9092:9090
 
@@ -167,7 +170,7 @@ services:
     volumes:
       - ./prometheus1_us1.yml:/etc/prometheus/prometheus.yml:ro
       - ./config/bucket-storage.yml:/etc/thanos/minio-bucket.yml:ro
-      - prometheus1_us1-storage:/prometheus
+      - prometheus1-us1-storage:/prometheus
     command:
       - sidecar
       - --http-address=0.0.0.0:19090
@@ -194,6 +197,7 @@ services:
       - thanos_sidecar_eu1
       - thanos_sidecar0_us1
       - thanos_sidecar1_us1
+      - thanos_store_gateway
     ports:
       - 29090:29090
     command:
@@ -203,6 +207,7 @@ services:
       - '--endpoint=thanos_sidecar_eu1:19190'
       - '--endpoint=thanos_sidecar0_us1:19190'
       - '--endpoint=thanos_sidecar1_us1:19190'
+      - '--endpoint=thanos_store_gateway:19191'
 
       # - "--store=dnssrv+thanos_sidecar_eu1:19190"
     # # environment:
@@ -211,11 +216,56 @@ services:
     #   # - --store=dnssrv+thanos_sidecar_eu1:19190
     #   - --store=thanos_sidecar_eu1:19190
 
+  #---------------------------------------- [Store Gateway]
+  thanos_store_gateway:
+    container_name: thanos_store_gateway
+    image: quay.io/thanos/thanos:v0.39.1
+    user: root
+    networks:
+      - prometheus_network
+    restart: unless-stopped
+    depends_on:
+      - thanos_sidecar_eu1
+      - thanos_sidecar0_us1
+      - thanos_sidecar1_us1
+      - minio
+    volumes:
+      - ./config/bucket-storage.yml:/etc/thanos/minio-bucket.yml:ro
+    ports:
+      - 19094:19091
+      - 19194:19191
+    command:
+      - 'store'
+      - --objstore.config-file=/etc/thanos/minio-bucket.yml
+      - --http-address=0.0.0.0:19091
+      - --grpc-address=0.0.0.0:19191
+
+  thanos_compactor:
+    container_name: thanos_compactor
+    image: quay.io/thanos/thanos:v0.39.1
+    user: root
+    volumes:
+      - ./config/bucket-storage.yml:/etc/thanos/minio-bucket.yml:ro
+    ports:
+      - 19095:19095
+    networks:
+      - prometheus_network
+      - minio-network
+    restart: unless-stopped
+    command:
+      - 'compact'
+      - --wait
+      - --wait-interval=30s
+      - --objstore.config-file=/etc/thanos/minio-bucket.yml
+      - --consistency-delay=0s
+      - --data-dir=/thanos/compact
+      - --http-address=0.0.0.0:19095
+
 volumes:
   minio-storage: {}
   prometheus0-eu1-storage: {}
-  prometheus0_us1-storage: {}
-  prometheus1_us1-storage: {}
+  prometheus0-us1-storage: {}
+  prometheus1-us1-storage: {}
 
 networks:
   prometheus_network:
