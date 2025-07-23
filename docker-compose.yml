@@ -15,8 +15,7 @@ services:
       MINIO_ROOT_PASSWORD: admin123
     command: server /data --console-address ":9001"
     networks:
-      - minio-network
-      - prometheus_network
+      - ocs-network
     volumes:
       - minio-storage:/data
   # ---------------------------------------
@@ -27,7 +26,7 @@ services:
     image: prom/prometheus:v3.4.1
     user: root
     networks:
-      - prometheus_network
+      - prometheus-eu-network
     # network_mode: host # Use host network stack
     volumes:
       # - ./prometheus0_eu1_data:/etc/prometheus
@@ -53,7 +52,8 @@ services:
     user: root
     restart: unless-stopped
     networks:
-      - prometheus_network
+      - prometheus-eu-network
+      - ocs-network
     depends_on:
       - prometheus0_eu1
     volumes:
@@ -82,7 +82,7 @@ services:
     image: prom/prometheus:v3.4.1
     user: root
     networks:
-      - prometheus_network
+      - prometheus-us0-network
     # network_mode: host # Use host network stack
     volumes:
       # - ./prometheus0_us1_data:/etc/prometheus
@@ -93,7 +93,6 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.listen-address=:9090'
-      # - "--web.external-url=https://8d91acbb5065-10-244-8-65-9090.spch.r.killercoda.com"
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
       - --storage.tsdb.min-block-duration=15h
@@ -108,7 +107,8 @@ services:
     user: root
     restart: unless-stopped
     networks:
-      - prometheus_network
+      - prometheus-us0-network
+      - ocs-network
     depends_on:
       - prometheus0_us1
     volumes:
@@ -124,9 +124,7 @@ services:
       - --prometheus.url=http://prometheus0_us1:9090
       - --objstore.config-file=/etc/thanos/minio-bucket.yml
       - --tsdb.path=/prometheus
-
       - --shipper.upload-compacted # Upload compacted blocks to the object store, just for first time
-
     ports:
       - 19091:19090
       - 19191:19190
@@ -138,8 +136,7 @@ services:
     image: prom/prometheus:v3.4.1
     user: root
     networks:
-      - prometheus_network
-    # network_mode: host # Use host network stack
+      - prometheus-us1-network
     volumes:
       # - ./prometheus1_us1_data:/etc/prometheus
       - prometheus1-us1-storage:/prometheus
@@ -164,7 +161,8 @@ services:
     user: root
     restart: unless-stopped
     networks:
-      - prometheus_network
+      - prometheus-us1-network
+      - ocs-network
     depends_on:
       - prometheus1_us1
     volumes:
@@ -180,7 +178,6 @@ services:
       - --prometheus.url=http://prometheus1_us1:9090
       - --objstore.config-file=/etc/thanos/minio-bucket.yml
       - --tsdb.path=/prometheus
-
       - --shipper.upload-compacted # Upload compacted blocks to the object store, just for first time
     ports:
       - 19092:19090
@@ -191,7 +188,10 @@ services:
     container_name: thanos_query
     image: quay.io/thanos/thanos:v0.39.1
     networks:
-      - prometheus_network
+      - prometheus-eu-network
+      - prometheus-us0-network
+      - prometheus-us1-network
+      - querier-network
     restart: unless-stopped
     depends_on:
       - thanos_sidecar_eu1
@@ -208,26 +208,17 @@ services:
       - '--endpoint=thanos_sidecar0_us1:19190'
       - '--endpoint=thanos_sidecar1_us1:19190'
       - '--endpoint=thanos_store_gateway:19191'
-
-      # - "--store=dnssrv+thanos_sidecar_eu1:19190"
-    # # environment:
-    #   - --http-address=0.0.0.0:29090
-    #   - --query.replica-label=replica
-    #   # - --store=dnssrv+thanos_sidecar_eu1:19190
-    #   - --store=thanos_sidecar_eu1:19190
-
+  #----------------------------------------
   #---------------------------------------- [Store Gateway]
   thanos_store_gateway:
     container_name: thanos_store_gateway
     image: quay.io/thanos/thanos:v0.39.1
     user: root
     networks:
-      - prometheus_network
+      - ocs-network
+      - querier-network
     restart: unless-stopped
     depends_on:
-      - thanos_sidecar_eu1
-      - thanos_sidecar0_us1
-      - thanos_sidecar1_us1
       - minio
     volumes:
       - ./config/bucket-storage.yml:/etc/thanos/minio-bucket.yml:ro
@@ -249,8 +240,7 @@ services:
     ports:
       - 19095:19095
     networks:
-      - prometheus_network
-      - minio-network
+      - ocs-network
     restart: unless-stopped
     command:
       - 'compact'
@@ -258,15 +248,60 @@ services:
       - --wait-interval=30s
       - --objstore.config-file=/etc/thanos/minio-bucket.yml
       - --consistency-delay=0s
-      - --data-dir=/thanos/compact
       - --http-address=0.0.0.0:19095
+
+  thanos_query_frontend:
+    container_name: query-frontend
+    image: quay.io/thanos/thanos:v0.39.1
+    networks:
+      - grafana-network
+      - querier-network
+    restart: unless-stopped
+    volumes:
+      - ./frontend.yml:/etc/thanos/frontend.yml:ro
+    command:
+      - query-frontend
+      - --http-address=0.0.0.0:20902
+      - --query-frontend.compress-responses
+      - --query-frontend.downstream-url=http://thanos_querier:29090 # querier address
+      - --query-frontend.log-queries-longer-than=5s
+      - --query-range.split-interval=1m
+      - --query-range.response-cache-max-freshness=1m
+      - --query-range.max-retries-per-request=5
+      - --query-range.response-cache-config-file=/etc/thanos/frontend.yml
+      - --cache-compression-type=snappy
+    ports:
+      - 20902:20902
+
+  grafana:
+    container_name: grafana-lab
+    image: grafana/grafana-enterprise
+    restart: unless-stopped
+    # depends_on:
+    #   - influxdb
+    networks:
+      - grafana-network
+    # image: grafana/grafana-enterprise:12.0.1-ubuntu full ubuntu base image
+    ports:
+      - 3000:3000
+    environment:
+      - GF_SECURITY_ADMIN_USER=ahmad
+      - GF_SECURITY_ADMIN_PASSWORD=ahmad998
+    #   - GF_PLUGINS_PREINSTALL=grafana-clock-panel, grafana-simple-json-datasource, grafana-synthetic-monitoring-app
+    volumes:
+      - grafana-storage:/var/lib/grafana
 
 volumes:
   minio-storage: {}
   prometheus0-eu1-storage: {}
   prometheus0-us1-storage: {}
   prometheus1-us1-storage: {}
+  grafana-storage: {}
 
 networks:
-  prometheus_network:
-  minio-network:
+  prometheus-eu-network:
+  prometheus-us0-network:
+  prometheus-us1-network:
+  ocs-network:
+  querier-network:
+  grafana-network:
